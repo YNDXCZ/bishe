@@ -1,0 +1,9 @@
+mediapipe
+opencv-python
+scikit-learn
+pandas
+numpy
+playsound
+PyQt5
+mysql-connector-python
+matplotlib

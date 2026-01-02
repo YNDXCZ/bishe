@@ -1,4 +1,3 @@
-
 import mediapipe as mp
 import cv2
 import numpy as np
@@ -46,7 +45,50 @@ class PoseDetector:
         ba = a - b
         bc = c - b
 
-        cosine_angle = np.dot(ba, bc) / (np.linalg.norm(ba) * np.linalg.norm(bc))
+        denom = np.linalg.norm(ba) * np.linalg.norm(bc)
+        if denom == 0:
+            return 0.0
+            
+        cosine_angle = np.dot(ba, bc) / denom
+        # Clip to handle floating point errors
+        cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
         angle = np.arccos(cosine_angle)
         
         return np.degrees(angle)
+
+    def calculate_shoulder_slope(self, lm_list):
+        # lm_list: [id, x, y, z, visibility]
+        # Left(11), Right(12)
+        
+        # Get Y coordinates
+        y11 = lm_list[11][2]
+        y12 = lm_list[12][2]
+        
+        # Simple slope: difference in height
+        # Positive: Right shoulder lower (Leaning Right)
+        # Negative: Left shoulder lower (Leaning Left)
+        return y12 - y11 
+
+    def calculate_head_deviation(self, lm_list):
+        # Nose(0), Shoulders(11, 12)
+        nose_x = lm_list[0][1]
+        x11 = lm_list[11][1]
+        x12 = lm_list[12][1]
+        
+        # Midpoint of shoulders
+        shoulder_center_x = (x11 + x12) / 2
+        
+        # Deviation: Nose X - Center X
+        # Standardize by shoulder width to make it scale-invariant
+        shoulder_width = abs(x11 - x12)
+        if shoulder_width == 0: return 0
+        
+        deviation_ratio = (nose_x - shoulder_center_x) / shoulder_width
+        return deviation_ratio
+
+    def get_landmark_z(self, lm_list, id):
+        # MediaPipe Z is relative to hips. 
+        # Negative Z: Closer to camera
+        # Positive Z: Further from camera
+        return lm_list[id][3]
+

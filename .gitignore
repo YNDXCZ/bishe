@@ -29,7 +29,8 @@ wheels/
 *.db
 
 # Local config (if we create it)
-config.py
+# config.py
+
 
 # OS
 .DS_Store

@@ -1,8 +1,9 @@
 import mysql.connector
 from mysql.connector import Error
+import config
 
 class DatabaseManager:
-    def __init__(self, host='localhost', database='posture_health', user='root', password=''):
+    def __init__(self, host=config.DB_HOST, database=config.DB_NAME, user=config.DB_USER, password=config.DB_PASSWORD):
         self.config = {
             'host': host,
             'database': database,
@@ -64,8 +65,11 @@ class DatabaseManager:
             self.conn.commit()
         except Error as e:
             print(f"Error initializing tables: {e}")
+            self.conn = None
 
     def add_user(self, username):
+        if not self.conn:
+             return None
         try:
             cursor = self.conn.cursor()
             cursor.execute("INSERT IGNORE INTO users (username) VALUES (%s)", (username,))
@@ -78,6 +82,8 @@ class DatabaseManager:
             return None
 
     def log_posture(self, user_id, posture_type, duration):
+        if not self.conn:
+             return
         try:
             cursor = self.conn.cursor()
             cursor.execute(
@@ -90,6 +96,8 @@ class DatabaseManager:
 
     def get_stats(self, user_id, days=7):
         # Return stats for charts
+        if not self.conn:
+             return []
         try:
             cursor = self.conn.cursor(dictionary=True)
             # Simple daily aggregation
@@ -108,6 +116,4 @@ class DatabaseManager:
 if __name__ == "__main__":
     # Test
     db = DatabaseManager(password='123456') # Assumption on password? User needs to configure.
-    # We will assume blank or standard, and let user detailed layout configure it.
-    # Actually, for safety, I will try catch or let user change it.
     pass

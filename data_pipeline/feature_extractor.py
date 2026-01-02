@@ -1,13 +1,16 @@
-import cv2
-import os
-import pandas as pd
-import numpy as np
+# CRITICAL: Import MediaPipe first
+import mediapipe as mp
 import sys
+import os
 
 # Add project root to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from core.detector import PoseDetector
+
+import cv2
+import pandas as pd
+import numpy as np
 
 class FeatureExtractor:
     def __init__(self, input_dir="data/processed", output_file="data/features.csv"):
@@ -27,9 +30,13 @@ class FeatureExtractor:
                 continue
                 
             files = os.listdir(path)
-            print(f"Extracting features from {cat}...")
+            total_files = len(files)
+            print(f"Extracting features from {cat} ({total_files} images)...")
             
-            for file in files:
+            for i, file in enumerate(files):
+                if i % 50 == 0:
+                    print(f"  Processed {i}/{total_files}...", end='\r')
+                
                 img_path = os.path.join(path, file)
                 img = cv2.imread(img_path)
                 if img is None: continue

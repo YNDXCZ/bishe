@@ -19,6 +19,9 @@ class ModelTrainer:
         # Load Data
         df = pd.read_csv(self.data_file)
         
+        # Clean Data
+        df.dropna(inplace=True)
+        
         if len(df) < 10:
             print("Not enough data to train. Please collect more samples.")
             return
@@ -38,12 +41,13 @@ class ModelTrainer:
 
         print(f"Training set: {len(X_train)}, Validation: {len(X_val)}, Test: {len(X_test)}")
 
-        # Initialize Model (SVM or Logistic Regression)
         # mode = 'svm'
-        model = SVC(kernel='linear', probability=True) # Linear kernel is fast usually enough
+        # probability=False makes training much faster (seconds instead of minutes)
+        # We will use decision_function distance as a proxy for confidence
+        model = SVC(kernel='linear', probability=False) 
         # model = LogisticRegression()
 
-        print("Training model...")
+        print("Training model... (Instant Mode)")
         model.fit(X_train, y_train)
 
         # Validation
@@ -58,10 +62,21 @@ class ModelTrainer:
         print("\nClassification Report:\n", classification_report(y_test, test_preds))
         print("\nConfusion Matrix:\n", confusion_matrix(y_test, test_preds))
 
-        # Save Model
+        # Save Model (Main)
         with open(self.model_file, 'wb') as f:
             pickle.dump(model, f)
         print(f"Model saved to {self.model_file}")
+        
+        # Save Model (Backup Version)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        version_dir = os.path.join(os.path.dirname(self.model_file), "versions")
+        os.makedirs(version_dir, exist_ok=True)
+        
+        version_file = os.path.join(version_dir, f"model_{timestamp}.pkl")
+        with open(version_file, 'wb') as f:
+            pickle.dump(model, f)
+        print(f"Model backup saved to {version_file}")
 
 if __name__ == "__main__":
     trainer = ModelTrainer()

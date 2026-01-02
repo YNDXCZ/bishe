@@ -1,0 +1,14 @@
+Traceback (most recent call last):
+  File "D:\APPS\pycharm\Xpythonprojects\bishe\main.py", line 22, in main
+    window = MainWindow()
+             ^^^^^^^^^^^^
+  File "D:\APPS\pycharm\Xpythonprojects\bishe\gui\main_window.py", line 59, in __init__
+    self.processor = HealthProcessor(db_manager=self.db)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\APPS\pycharm\Xpythonprojects\bishe\core\processor.py", line 13, in __init__
+    self.detector = PoseDetector()
+                    ^^^^^^^^^^^^^^
+  File "D:\APPS\pycharm\Xpythonprojects\bishe\core\detector.py", line 7, in __init__
+    self.mp_pose = mp.solutions.pose
+                   ^^^^^^^^^^^^
+AttributeError: module 'mediapipe' has no attribute 'solutions'

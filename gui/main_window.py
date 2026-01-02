@@ -11,6 +11,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 # Project Imports
 from core.processor import HealthProcessor
 from database.db_manager import DatabaseManager
+import config
 
 class VideoThread(QThread):
     change_pixmap_signal = pyqtSignal(QImage)
@@ -21,11 +22,15 @@ class VideoThread(QThread):
         self.processor = processor
         self.running = True
 
+    update_stats_signal = pyqtSignal(str) # FPS/Latency
+
     def run(self):
-        cap = cv2.VideoCapture(0)
+        cap = cv2.VideoCapture(config.CAMERA_ID)
         while self.running:
+            start_time = time.time()
             ret, frame = cap.read()
             if ret:
+                self.last_frame = frame.copy() # Store for capture
                 # Process Frame (Detect + Predict)
                 frame, label, conf = self.processor.process_frame(frame)
                 
@@ -40,7 +45,19 @@ class VideoThread(QThread):
                 p = convert_to_Qt_format.scaled(640, 480, Qt.KeepAspectRatio)
                 self.change_pixmap_signal.emit(p)
             
-            time.sleep(0.03) # ~30 FPS
+            # Subtracted sleep to measure pure processing latency involves more complex logic, 
+            # but for "System Latency", end-to-end time is what matters.
+            process_time = time.time() - start_time
+            latency_ms = process_time * 1000
+            fps = 1.0 / process_time if process_time > 0 else 0
+            
+            self.update_stats_signal.emit(f"FPS: {fps:.1f} | Latency: {latency_ms:.1f}ms")
+            
+            # Adjust sleep to maintain cap but not double sleep
+            # simple sleep for stability
+            if process_time < 0.033:
+                 time.sleep(0.033 - process_time)
+
         cap.release()
 
     def stop(self):
@@ -54,8 +71,14 @@ class MainWindow(QMainWindow):
         self.resize(1000, 700)
 
         # Initialize Backend
-        self.db = DatabaseManager(password="123456") # TODO: From settings
-        self.processor = HealthProcessor(db_manager=self.db)
+        self.db = DatabaseManager() # Uses config defaults
+        
+        # Ensure default user exists
+        current_user_id = self.db.add_user("admin")
+        if not current_user_id:
+            current_user_id = 1 # Fallback, though logging might fail if DB connection is broken
+            
+        self.processor = HealthProcessor(db_manager=self.db, user_id=current_user_id)
 
         # UI Setup
         self.central_widget = QWidget()
@@ -88,6 +111,10 @@ class MainWindow(QMainWindow):
         self.status_label = QLabel("Status: Unknown")
         self.status_label.setStyleSheet("font-size: 20px; font-weight: bold;")
         right_panel.addWidget(self.status_label)
+        
+        self.fps_label = QLabel("FPS: --")
+        self.fps_label.setStyleSheet("color: gray;")
+        right_panel.addWidget(self.fps_label)
 
         self.btn_start = QPushButton("Start Monitoring")
         self.btn_start.clicked.connect(self.start_video)
@@ -98,6 +125,28 @@ class MainWindow(QMainWindow):
         self.btn_stop.setEnabled(False)
         right_panel.addWidget(self.btn_stop)
 
+        right_panel.addSpacing(20)
+        
+        # Data Collection Section
+        self.lbl_collect = QLabel("Data Collection:")
+        self.lbl_collect.setStyleSheet("font-weight: bold;")
+        right_panel.addWidget(self.lbl_collect)
+        
+        self.btn_good = QPushButton("Capture GOOD Posture")
+        self.btn_good.setStyleSheet("background-color: #d4edda; color: #155724;") 
+        self.btn_good.clicked.connect(lambda: self.capture_data('good'))
+        right_panel.addWidget(self.btn_good)
+        
+        self.btn_bad = QPushButton("Capture BAD Posture")
+        self.btn_bad.setStyleSheet("background-color: #f8d7da; color: #721c24;")
+        self.btn_bad.clicked.connect(lambda: self.capture_data('bad'))
+        right_panel.addWidget(self.btn_bad)
+        
+        self.btn_retrain = QPushButton("Retrain Model")
+        self.btn_retrain.clicked.connect(self.retrain_model)
+        self.btn_retrain.setEnabled(False) # Enable logic later or keep manual
+        right_panel.addWidget(self.btn_retrain)
+
         right_panel.addStretch()
         
         self.btn_settings = QPushButton("Settings")
@@ -105,6 +154,37 @@ class MainWindow(QMainWindow):
         right_panel.addWidget(self.btn_settings)
         
         layout.addLayout(right_panel)
+
+    def capture_data(self, label):
+        if not hasattr(self, 'thread') or not self.thread.isRunning() or not hasattr(self.thread, 'last_frame'):
+            QMessageBox.warning(self, "Warning", "Please start monitoring first.")
+            return
+
+        import os
+        from datetime import datetime
+        
+        # Determine path
+        # config.DATA_RAW points to data/raw
+        # We need data/raw/good or data/raw/bad
+        save_dir = os.path.join("data", "raw", label)
+        os.makedirs(save_dir, exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"{label}_{timestamp}.jpg"
+        filepath = os.path.join(save_dir, filename)
+        
+        # Save Frame
+        cv2.imwrite(filepath, self.thread.last_frame)
+        print(f"Captured {label} sample: {filepath}")
+        
+        # Flash status to visually confirm
+        original_text = self.status_label.text()
+        self.status_label.setText(f"Saved: {label.upper()}!")
+        QTimer.singleShot(1000, lambda: self.status_label.setText(original_text))
+
+    def retrain_model(self):
+        # Placeholder for now, or we can implement calling the scripts
+        QMessageBox.information(self, "Info", "Please run 'python data_pipeline/feature_extractor.py' and 'python data_pipeline/train_model.py' in terminal to update the model.")
 
     def open_settings(self):
         from gui.settings_dialog import SettingsDialog
@@ -132,6 +212,7 @@ class MainWindow(QMainWindow):
         self.thread = VideoThread(self.processor)
         self.thread.change_pixmap_signal.connect(self.update_image)
         self.thread.update_status_signal.connect(self.update_status)
+        self.thread.update_stats_signal.connect(self.update_stats)
         self.thread.start()
         self.btn_start.setEnabled(False)
         self.btn_stop.setEnabled(True)
@@ -150,6 +231,9 @@ class MainWindow(QMainWindow):
         color = "green" if label == "Good" else "red"
         self.status_label.setText(f"Status: {label} ({conf})")
         self.status_label.setStyleSheet(f"color: {color}; font-size: 20px; font-weight: bold;")
+
+    def update_stats(self, stats_text):
+        self.fps_label.setText(stats_text)
 
     def plot_charts(self):
         self.figure.clear()
